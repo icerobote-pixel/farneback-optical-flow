@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import argparse
 import csv
 import math
+import sys
 from pathlib import Path
 from typing import Dict
 
@@ -54,14 +54,25 @@ ALG_CFG: Dict = dict(
     MIN_CLUSTER_POINTS=1000,
     ANGLE_HIST_BINS=180,
     DOM_DIR_REFINE_DEG=12.0,
-    ANGLE_R_SCALE=1.0,
+
+    # 方向筛选阈值缩放系数
+    ANGLE_R_SCALE=0.3,
     ANGLE_R_MARGIN_DEG=0.0,
     ANGLE_R_MIN_DEG=3.0,
     ANGLE_R_MAX_DEG=120.0,
-    MAG_R_SCALE=1.8,
+
+    # 速度大小筛选阈值缩放系数
+    MAG_R_SCALE=0.2,
     MAG_R_MARGIN=0.0,
     MAG_R_MIN=0.05,
     MAG_R_MAX=200000.0,
+
+    # 是否使用所有采样点计算速度基准 mag0
+    # False：只使用方向接近主方向的点，适合作为背景速度基准
+    # True ：使用全部采样点，适合方向筛选不稳定时做对比实验
+    USE_ALL_POINTS_FOR_MAG0=True,
+
+    # 最小运动幅值，小于该值的点会被过滤
     FISH_MAG_MIN=0.1,
 )
 
@@ -76,8 +87,6 @@ POST_CFG: Dict = dict(
     MAX_REGION_AREA=50000,
 )
 
-# ========= 显示 / 输出参数 =========
-
 # ========= 日志参数 =========
 LOG_CFG: Dict = dict(
     ENABLE_LOGGING=True,
@@ -88,6 +97,7 @@ LOG_CFG: Dict = dict(
     SAVE_RUN_CONFIG_JSON=True,
 )
 
+# ========= 显示 / 输出参数 =========
 VIS_CFG: Dict = dict(
     DEBUG_INTERVAL=10,
     COMPARE_SAVE_ONLY_DEBUG_FRAMES=True,
@@ -135,41 +145,6 @@ VIS_CFG: Dict = dict(
     SAVE_RAW_SPEED_HIST_CSV=True,
     SAVE_RAW_SPEED_HIST_PNG=True,
 )
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Detect moving regions in a video with Farneback optical flow.",
-    )
-    parser.add_argument(
-        "input",
-        nargs="?",
-        default=INPUT_PATH,
-        help=f"Input video path. Default: {INPUT_PATH}",
-    )
-    parser.add_argument(
-        "-o",
-        "--output-dir",
-        default=str(OUTPUT_BASE_ROOT),
-        help=f"Output root directory. Default: {OUTPUT_BASE_ROOT}",
-    )
-    parser.add_argument(
-        "--debug-interval",
-        type=int,
-        default=VIS_CFG["DEBUG_INTERVAL"],
-        help="Save debug/compare outputs every N frames.",
-    )
-    parser.add_argument(
-        "--no-excel",
-        action="store_true",
-        help="Skip Excel debug output for faster runs.",
-    )
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Write logs to file without printing progress to the console.",
-    )
-    return parser.parse_args()
 
 
 def wrap_angle_pi(a):
@@ -294,6 +269,7 @@ def two_stage_dir_then_mag(flow, fx_raw, fy_raw, alg_cfg: Dict, debug=False):
     mag = np.sqrt(fx * fx + fy * fy)
     theta = np.arctan2(fy, fx)
 
+    # ========= 第一阶段：方向筛选 =========
     dom_dir, hist = dominant_direction_hist(theta, mag, alg_cfg)
     dtheta = np.abs(wrap_angle_pi(theta - dom_dir))
     dtheta_deg = rad2deg(dtheta)
@@ -309,26 +285,44 @@ def two_stage_dir_then_mag(flow, fx_raw, fy_raw, alg_cfg: Dict, debug=False):
     inside_dir = dtheta_deg <= r_theta
     outside_dir = ~inside_dir
 
+    # ========= 第二阶段：速度大小筛选 =========
+    # 默认逻辑：只使用方向接近主方向的点计算速度基准 mag0。
+    # 可选逻辑：如果 USE_ALL_POINTS_FOR_MAG0=True，则使用全部采样点计算速度基准 mag0。
     if inside_dir.sum() >= 30:
-        mag_in = mag[inside_dir]
-        mag0 = float(np.median(mag_in))
+        use_all_points_for_mag0 = bool(alg_cfg.get("USE_ALL_POINTS_FOR_MAG0", False))
+
+        if use_all_points_for_mag0:
+            # 方案 A：使用全部采样点的速度中位数作为基准
+            mag0 = float(np.median(mag))
+            dmag_ref_sorted = np.sort(np.abs(mag - mag0))
+            mag0_source = "all_points"
+        else:
+            # 方案 B：使用方向接近主方向的点的速度中位数作为基准
+            mag_in = mag[inside_dir]
+            mag0 = float(np.median(mag_in))
+            dmag_ref_sorted = np.sort(np.abs(mag_in - mag0))
+            mag0_source = "inside_direction"
+
         dmag = np.abs(mag - mag0)
-        dmag_in_sorted = np.sort(np.abs(mag_in - mag0))
-        r0_mag, k_mag = knee_radius_1d(dmag_in_sorted)
+        r0_mag, k_mag = knee_radius_1d(dmag_ref_sorted)
         r_mag = float(np.clip(
             r0_mag * alg_cfg["MAG_R_SCALE"] + alg_cfg["MAG_R_MARGIN"],
             alg_cfg["MAG_R_MIN"],
             alg_cfg["MAG_R_MAX"],
         ))
+
+        # 速度异常只在方向接近主方向的点中判断
         mag_outlier = inside_dir & (dmag > r_mag)
     else:
         mag0 = float(np.median(mag)) if mag.size else 0.0
         r_mag = 0.0
         r0_mag, k_mag = 0.0, 0
+        mag0_source = "fallback_all_points"
         mag_outlier = np.zeros_like(inside_dir, dtype=bool)
 
     target_s = outside_dir | mag_outlier
 
+    # ========= 将采样点上的规则应用到整张图 =========
     mag_full = np.sqrt(fx_raw * fx_raw + fy_raw * fy_raw)
     theta_full = np.arctan2(fy_raw, fx_raw)
     dtheta_full_deg = np.abs(rad2deg(wrap_angle_pi(theta_full - dom_dir)))
@@ -352,6 +346,7 @@ def two_stage_dir_then_mag(flow, fx_raw, fy_raw, alg_cfg: Dict, debug=False):
         r_mag=float(r_mag),
         r0_mag=float(r0_mag),
         mag0=float(mag0),
+        mag0_source=mag0_source,
         n=int(pts.shape[0]),
         target_pixels=int(mask_target_full.sum()),
         inside_dir_pixels=int(inside_dir_full.sum()),
@@ -386,23 +381,17 @@ def two_stage_dir_then_mag(flow, fx_raw, fy_raw, alg_cfg: Dict, debug=False):
 
 
 def main():
-    args = parse_args()
-    input_path = args.input
-    output_base_root = Path(args.output_dir)
+    input_path = INPUT_PATH
+    if len(sys.argv) >= 2:
+        input_path = sys.argv[1]
 
-    VIS_CFG["DEBUG_INTERVAL"] = max(1, int(args.debug_interval))
-    if args.no_excel:
-        VIS_CFG["SAVE_DEBUG_EXCEL_PRE"] = False
-        VIS_CFG["SAVE_COMPARE_EXCEL"] = False
-    if args.quiet:
-        LOG_CFG["LOG_TO_CONSOLE"] = False
-
-    paths = create_run_paths(output_base_root, OUTPUT_RUN_PREFIX)
+    paths = create_run_paths(OUTPUT_BASE_ROOT, OUTPUT_RUN_PREFIX)
     logger = setup_run_logger(paths, LOG_CFG) if LOG_CFG["ENABLE_LOGGING"] else None
 
     if logger is not None:
         logger.info("本次输出目录: %s", paths["run_dir"])
         logger.info("输入视频: %s", input_path)
+        logger.info("mag0_source_mode: %s", "all_points" if ALG_CFG.get("USE_ALL_POINTS_FOR_MAG0", False) else "inside_direction")
 
     cap = cv2.VideoCapture(input_path, cv2.CAP_FFMPEG)
     if not cap.isOpened():
@@ -428,7 +417,7 @@ def main():
     if LOG_CFG["SAVE_RUN_CONFIG_JSON"]:
         run_config = {
             "input_path": str(input_path),
-            "output_base_root": str(output_base_root),
+            "output_base_root": str(OUTPUT_BASE_ROOT),
             "output_run_prefix": OUTPUT_RUN_PREFIX,
             "f_params": F_PARAMS,
             "alg_cfg": ALG_CFG,
@@ -463,9 +452,19 @@ def main():
         csv_file = open(paths["stats_csv"], "w", newline="", encoding="utf-8")
         stats_writer = csv.writer(csv_file)
         stats_writer.writerow([
-            "frame_idx", "mean_speed_target", "mean_angle_deg_target", "dom_dir_deg", "theta_r_deg",
-            "mag0", "mag_r", "dir_outlier_pixels", "mag_outlier_pixels", "target_pixels",
-            "post_target_pixels", "num_kept_contours",
+            "frame_idx",
+            "mean_speed_target",
+            "mean_angle_deg_target",
+            "dom_dir_deg",
+            "theta_r_deg",
+            "mag0",
+            "mag0_source",
+            "mag_r",
+            "dir_outlier_pixels",
+            "mag_outlier_pixels",
+            "target_pixels",
+            "post_target_pixels",
+            "num_kept_contours",
         ])
 
     try:
@@ -557,6 +556,7 @@ def main():
                     f"{info.get('dom_dir_deg', 0.0):.3f}",
                     f"{info.get('r_theta', 0.0):.3f}",
                     f"{info.get('mag0', 0.0):.6f}",
+                    info.get("mag0_source", "unknown"),
                     f"{info.get('r_mag', 0.0):.6f}",
                     int(info.get("dir_outlier_pixels", 0)),
                     int(info.get("mag_outlier_pixels", 0)),
@@ -577,16 +577,16 @@ def main():
             if compare_needed:
                 save_compare_outputs(frame, frame_idx, post_pack, region_frame, box_frame, combined_frame, VIS_CFG, paths, logger=logger)
 
-
             if logger is not None and (frame_idx % max(1, LOG_CFG["LOG_EVERY_N_FRAMES"]) == 0):
                 logger.info(
-                    "frame=%d mean_speed=%.3f mean_angle=%.2f dom_dir=%.2f r_theta=%.2f mag0=%.3f r_mag=%.3f target_pixels=%d post_pixels=%d kept_regions=%d",
+                    "frame=%d mean_speed=%.3f mean_angle=%.2f dom_dir=%.2f r_theta=%.2f mag0=%.3f mag0_source=%s r_mag=%.3f target_pixels=%d post_pixels=%d kept_regions=%d",
                     frame_idx,
                     speed,
                     angle,
                     float(info.get("dom_dir_deg", 0.0)),
                     float(info.get("r_theta", 0.0)),
                     float(info.get("mag0", 0.0)),
+                    info.get("mag0_source", "unknown"),
                     float(info.get("r_mag", 0.0)),
                     int(info.get("target_pixels", 0)),
                     int(post_pack["post_target_pixels"]),
