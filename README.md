@@ -1,6 +1,6 @@
 # Farneback Optical Flow Motion Detector
 
-This project detects moving target regions in video using OpenCV Farneback optical flow. It creates visual debug videos, masks, region overlays, CSV statistics, and optional Excel debug grids.
+This project detects moving target regions in video using OpenCV Farneback optical flow. It creates visual debug videos, masks, region overlays, CSV statistics, and optional Excel debug workbooks.
 
 ## Features
 
@@ -14,14 +14,17 @@ This project detects moving target regions in video using OpenCV Farneback optic
 
 ```text
 .
-├── main_flow_detect.py
-├── tools/
-│   ├── flow_visual_debug.py
-│   └── save_manager.py
-├── input_video/
-│   └── .gitkeep
-├── requirements.txt
-└── README.md
+|-- main_flow_detect.py
+|-- tools/
+|   |-- flow_visual_debug.py
+|   `-- save_manager.py
+|-- input_video/
+|   `-- .gitkeep
+|-- docs/
+|   |-- config_reference.md
+|   `-- output_explanation.md
+|-- requirements.txt
+`-- README.md
 ```
 
 ## Installation
@@ -40,27 +43,22 @@ Put a video file in `input_video/`, then run:
 python main_flow_detect.py input_video/cam2.mp4
 ```
 
-You can also choose a custom output folder:
+The current script accepts the first command-line argument as the input video path. Other options are configured inside `main_flow_detect.py` through `ALG_CFG`, `POST_CFG`, `LOG_CFG`, and `VIS_CFG`.
 
-```bash
-python main_flow_detect.py input_video/cam2.mp4 --output-dir flow_outputs
-```
+## Documentation
 
-For faster runs without Excel files:
-
-```bash
-python main_flow_detect.py input_video/cam2.mp4 --no-excel
-```
+- [Configuration reference](docs/config_reference.md): explains the optional switches and tuning parameters in the main program.
+- [Output explanation](docs/output_explanation.md): explains each output folder, video, image, CSV file, and Excel sheet.
 
 ## Outputs
 
-Each run creates a numbered folder under the output directory. Typical outputs include:
+Each run creates a numbered folder under `OUTPUT_BASE_ROOT`. Typical outputs include:
 
 - `videos/`: HSV flow, quiver, region, box, and combined videos
-- `stats/`: frame-level motion statistics and raw speed histogram
+- `stats/`: frame-level motion statistics and raw speed histogram files
 - `cluster_plots/`: debug plots for direction and magnitude thresholds
-- `compare_pre/` and `compare_post/`: mask and overlay comparison images
-- `excel/`: optional grid-level debug workbooks
+- `compare_pre/` and `compare_post/`: pre/post-processing mask and overlay comparison images
+- `excel/`: optional frame-level debug workbooks
 - `run.log` and `run_config.json`: execution log and saved parameters
 
 ## Notes
