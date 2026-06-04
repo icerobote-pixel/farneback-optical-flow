@@ -20,6 +20,11 @@ from tools.flow_visual_debug import (
     save_debug_excel_prepost,
     save_raw_speed_hist,
 )
+from tools.flow_reliability import (
+    calc_forward_backward_consistency,
+    make_fb_error_image,
+    summarize_reliability,
+)
 from tools.save_manager import (
     create_run_paths,
     open_requested_writers,
@@ -33,6 +38,8 @@ from tools.save_manager import (
 # ========= 输入 / 输出 =========
 INPUT_PATH = r"./input_video/cam2.mp4"  # TODO: 改成你的视频路径
 OUTPUT_BASE_ROOT = Path("./flow_outputs_net_remove4")
+# INPUT_PATH = r"./input_video/01-night-traffic-aerial-6749375.mp4"  # TODO: 改成你的视频路径
+# OUTPUT_BASE_ROOT = Path("./flow_outputs_net_remove_test")
 OUTPUT_RUN_PREFIX = "flow_outputs_two_stage_dir_mag_compare"
 
 # ========= 光流参数 =========
@@ -56,13 +63,13 @@ ALG_CFG: Dict = dict(
     DOM_DIR_REFINE_DEG=12.0,
 
     # 方向筛选阈值缩放系数
-    ANGLE_R_SCALE=0.3,
+    ANGLE_R_SCALE=1,
     ANGLE_R_MARGIN_DEG=0.0,
     ANGLE_R_MIN_DEG=3.0,
     ANGLE_R_MAX_DEG=120.0,
 
     # 速度大小筛选阈值缩放系数
-    MAG_R_SCALE=0.2,
+    MAG_R_SCALE=1.8,
     MAG_R_MARGIN=0.0,
     MAG_R_MIN=0.05,
     MAG_R_MAX=200000.0,
@@ -111,10 +118,10 @@ VIS_CFG: Dict = dict(
     SAVE_VIDEO_BOX=True,
     SAVE_VIDEO_COMBINED=True,
 
-    ENABLE_DEBUG_OUTPUTS=True,
+    ENABLE_DEBUG_OUTPUTS=False,
     SAVE_DEBUG_PLOTS=True,
-    SAVE_DEBUG_TABLE_CSV=True,
-    SAVE_DEBUG_EXCEL_PRE=True,
+    SAVE_DEBUG_TABLE_CSV=False,
+    SAVE_DEBUG_EXCEL_PRE=False,
     SAVE_DEBUG_DETECT_FRAME=True,
     SAVE_DEBUG_QUIVER_RAW=True,
 
@@ -144,6 +151,17 @@ VIS_CFG: Dict = dict(
     SAVE_STATS_CSV=True,
     SAVE_RAW_SPEED_HIST_CSV=True,
     SAVE_RAW_SPEED_HIST_PNG=True,
+)
+
+
+# ========= 光流可靠性诊断参数 =========
+RELIABILITY_CFG: Dict = dict(
+    ENABLE_FB_CONSISTENCY=True,
+    FB_ERROR_THRESHOLD=1.5,
+    FB_ERROR_VIS_MAX=5.0,
+    SAVE_FB_DEBUG_IMAGES=True,
+    FB_SAVE_ONLY_DEBUG_FRAMES=True,
+    APPLY_RELIABLE_MASK_TO_DETECTION=False,
 )
 
 
@@ -386,6 +404,9 @@ def main():
         input_path = sys.argv[1]
 
     paths = create_run_paths(OUTPUT_BASE_ROOT, OUTPUT_RUN_PREFIX)
+    if RELIABILITY_CFG["ENABLE_FB_CONSISTENCY"] and RELIABILITY_CFG["SAVE_FB_DEBUG_IMAGES"]:
+        paths["flow_reliability_dir"] = paths["run_dir"] / "flow_reliability"
+        paths["flow_reliability_dir"].mkdir(parents=True, exist_ok=True)
     logger = setup_run_logger(paths, LOG_CFG) if LOG_CFG["ENABLE_LOGGING"] else None
 
     if logger is not None:
@@ -423,6 +444,7 @@ def main():
             "alg_cfg": ALG_CFG,
             "post_cfg": POST_CFG,
             "vis_cfg": VIS_CFG,
+            "reliability_cfg": RELIABILITY_CFG,
             "log_cfg": LOG_CFG,
             "video_width": int(w),
             "video_height": int(h),
@@ -465,6 +487,8 @@ def main():
             "target_pixels",
             "post_target_pixels",
             "num_kept_contours",
+            "mean_fb_error",
+            "reliable_pixel_ratio",
         ])
 
     try:
@@ -507,8 +531,46 @@ def main():
                 (frame_idx % VIS_CFG["DEBUG_INTERVAL"] == 0) if VIS_CFG["COMPARE_SAVE_ONLY_DEBUG_FRAMES"] else True
             )
 
+            fb_error = None
+            reliable_mask = None
+            mean_fb_error = 0.0
+            reliable_pixel_ratio = 1.0
+            if RELIABILITY_CFG["ENABLE_FB_CONSISTENCY"]:
+                fb_error, reliable_mask = calc_forward_backward_consistency(prev_gray, gray_stab, flow, F_PARAMS, RELIABILITY_CFG)
+                reliability_summary = summarize_reliability(fb_error, reliable_mask)
+                mean_fb_error = reliability_summary["mean_fb_error"]
+                reliable_pixel_ratio = reliability_summary["reliable_pixel_ratio"]
+
+                should_save_fb = RELIABILITY_CFG["SAVE_FB_DEBUG_IMAGES"] and (
+                    debug_needed if RELIABILITY_CFG["FB_SAVE_ONLY_DEBUG_FRAMES"] else True
+                )
+                if should_save_fb:
+                    safe_imwrite(
+                        paths["flow_reliability_dir"] / f"fb_error_frame_{frame_idx:05d}.png",
+                        make_fb_error_image(fb_error, RELIABILITY_CFG),
+                        logger=logger,
+                    )
+                    safe_imwrite(
+                        paths["flow_reliability_dir"] / f"reliable_flow_mask_frame_{frame_idx:05d}.png",
+                        reliable_mask.astype(np.uint8) * 255,
+                        logger=logger,
+                    )
+
+            flow_for_detect = flow
+            fx_for_detect = fx_raw
+            fy_for_detect = fy_raw
+            if (
+                RELIABILITY_CFG["ENABLE_FB_CONSISTENCY"]
+                and RELIABILITY_CFG["APPLY_RELIABLE_MASK_TO_DETECTION"]
+                and reliable_mask is not None
+            ):
+                flow_for_detect = flow.copy()
+                flow_for_detect[~reliable_mask] = 0
+                fx_for_detect = flow_for_detect[..., 0]
+                fy_for_detect = flow_for_detect[..., 1]
+
             flow_used, mask_used, info, debug_pack = two_stage_dir_then_mag(
-                flow, fx_raw, fy_raw, ALG_CFG, debug=debug_needed
+                flow_for_detect, fx_for_detect, fy_for_detect, ALG_CFG, debug=debug_needed
             )
             if logger is not None and not info.get("ok", False):
                 logger.warning("frame=%d two-stage fallback: %s", frame_idx, info.get("reason", "unknown"))
@@ -563,6 +625,8 @@ def main():
                     int(info.get("target_pixels", 0)),
                     int(post_pack["post_target_pixels"]),
                     int(post_pack["num_kept_contours"]),
+                    f"{mean_fb_error:.6f}",
+                    f"{reliable_pixel_ratio:.6f}",
                 ])
 
             if VIS_CFG["ENABLE_DEBUG_OUTPUTS"] and debug_needed and debug_pack is not None and info.get("ok", False):
@@ -579,7 +643,7 @@ def main():
 
             if logger is not None and (frame_idx % max(1, LOG_CFG["LOG_EVERY_N_FRAMES"]) == 0):
                 logger.info(
-                    "frame=%d mean_speed=%.3f mean_angle=%.2f dom_dir=%.2f r_theta=%.2f mag0=%.3f mag0_source=%s r_mag=%.3f target_pixels=%d post_pixels=%d kept_regions=%d",
+                    "frame=%d mean_speed=%.3f mean_angle=%.2f dom_dir=%.2f r_theta=%.2f mag0=%.3f mag0_source=%s r_mag=%.3f target_pixels=%d post_pixels=%d kept_regions=%d mean_fb_error=%.3f reliable_ratio=%.3f",
                     frame_idx,
                     speed,
                     angle,
@@ -591,6 +655,8 @@ def main():
                     int(info.get("target_pixels", 0)),
                     int(post_pack["post_target_pixels"]),
                     int(post_pack["num_kept_contours"]),
+                    mean_fb_error,
+                    reliable_pixel_ratio,
                 )
 
             prev_gray = gray_stab

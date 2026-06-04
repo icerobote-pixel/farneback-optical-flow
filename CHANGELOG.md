@@ -1,4 +1,17 @@
-# Changelog
+﻿# Changelog
+
+## Version 1.2
+
+Version 1.2 adds optical-flow reliability diagnostics based on forward-backward consistency.
+
+Changes included:
+
+- Added `tools/flow_reliability.py` as a reusable and standalone reliability diagnosis tool.
+- Added `RELIABILITY_CFG` to control forward-backward consistency checks.
+- Added `flow_reliability/` output images: `fb_error_frame_XXXXX.png` and `reliable_flow_mask_frame_XXXXX.png`.
+- Added `mean_fb_error` and `reliable_pixel_ratio` to frame-level CSV statistics and logs.
+- Kept `APPLY_RELIABLE_MASK_TO_DETECTION=False` by default so reliability is diagnostic only and does not suppress detected targets.
+- Reduced heavy debug table/Excel output defaults while keeping comparison images and reliability diagnostics available.
 
 ## Version 1.1
 
@@ -19,3 +32,5 @@ Changes included:
 ## Version 1.0
 
 Initial uploaded version of the Farneback optical flow motion detector. The magnitude baseline `mag0` was calculated from points that passed the dominant-direction filter.
+
+
