@@ -94,6 +94,9 @@ See [VERSION_NOTES.md](VERSION_NOTES.md) for current stable-version details and
 [CHANGELOG.md](CHANGELOG.md) for the version summary. Historical complete
 versions remain available through Git tags.
 
+All future `CHANGELOG.md` entries must include matching English and Chinese
+sections.
+
 ## Outputs
 
 Each run creates a numbered folder under the output directory. Typical outputs include:
