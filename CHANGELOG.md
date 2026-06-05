@@ -1,5 +1,30 @@
 # Changelog
 
+## Version 2.0
+
+Version 2.0 adds appearance-change detection and mask fusion while retaining the
+forward-backward optical-flow reliability diagnostics introduced during Version
+1.2 development.
+
+Changes included:
+
+- Added `tools/appearance_change.py`.
+- Added color-change detection in HSV space.
+- Added edge-change detection using Canny edges.
+- Added texture-change detection using Laplacian responses.
+- Added morphology cleanup for the combined appearance mask.
+- Added configurable fusion between optical-flow and appearance masks:
+  - `flow_only`
+  - `appearance_only`
+  - `flow_and_appearance`
+  - `flow_or_appearance`
+- Added optional `appearance_debug/` output images.
+- Added `appearance_pixels` and `fused_target_pixels` to CSV statistics and logs.
+- Added `tools/flow_reliability.py` and reliability statistics from the Version
+  1.2 development state.
+- Kept appearance-change detection disabled in the backed-up default
+  configuration so existing optical-flow behavior remains the default.
+
 ## Version 1.1
 
 Version 1.1 updates the magnitude filtering baseline used in the two-stage optical flow detection process.
