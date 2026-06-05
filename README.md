@@ -8,7 +8,7 @@ This project detects moving target regions in video using OpenCV Farneback optic
 - Optional forward-backward optical-flow reliability diagnosis
 - Optional color, edge, and texture appearance-change detection
 - Configurable fusion of optical-flow and appearance-change masks
-- Optional Version 3.0 recent-frame temporal mask filtering
+- Optional recent-frame temporal mask filtering
 - Morphology and area filtering for cleaner target regions
 - HSV flow visualization, quiver arrows, region overlays, and bounding boxes
 - Per-run output folders with logs, configuration snapshots, CSV stats, and debug images
@@ -20,6 +20,8 @@ This project detects moving target regions in video using OpenCV Farneback optic
 .
 ├── main_flow_detect.py
 ├── main_flow_detect_temporal.py
+├── VERSION_NOTES.md
+├── CHANGELOG.md
 ├── tools/
 │   ├── flow_visual_debug.py
 │   ├── flow_reliability.py
@@ -60,38 +62,37 @@ For faster runs without Excel files:
 python main_flow_detect.py input_video/cam2.mp4 --no-excel
 ```
 
-Version 2.0 adds appearance-change detection through `tools/appearance_change.py`.
-It can combine color, edge, and texture changes with the optical-flow candidate
-mask. In the backed-up Version 2.0 configuration, this feature is present but
-disabled by default:
+The current stable version is Version 3.1. `main_flow_detect.py` provides the
+appearance-adjusted detector, and `main_flow_detect_temporal.py` adds temporal
+filtering.
+
+The current appearance configuration starts with color change only:
 
 ```python
 APPEARANCE_CFG = dict(
-    ENABLE_APPEARANCE_CHANGE=False,
+    ENABLE_APPEARANCE_CHANGE=True,
     FUSION_MODE="flow_or_appearance",
+    COLOR_DIFF_THRESHOLD=35.0,
+    ENABLE_EDGE_CHANGE=False,
+    ENABLE_TEXTURE_CHANGE=False,
     ...
 )
 ```
 
-Set `ENABLE_APPEARANCE_CHANGE=True` to enable it. Available fusion modes are
-`flow_only`, `appearance_only`, `flow_and_appearance`, and
-`flow_or_appearance`.
-
-Version 3.0 keeps the Version 2.0 main program unchanged and provides a
-separate temporal entry point:
+Run the current temporal entry point with:
 
 ```bash
 python main_flow_detect_temporal.py input_video/cam2.mp4
 ```
 
-The temporal program calls `tools/temporal_filter.py` after flow/appearance
-fusion and before morphology and area filtering. Its default rule keeps pixels
-that appear in at least `3` of the recent `5` frames. A small dilation of
-historical masks allows minor movement between frames.
+The temporal program calls `tools/temporal_filter.py` after separately
+postprocessed flow/appearance fusion and before final morphology and area
+filtering. Its current rule keeps pixels that appear in at least `2` of the
+recent `5` frames.
 
-Version 2.1 adjusts appearance fusion by postprocessing flow and appearance
-masks separately before fusion. Version 3.1 combines this adjustment with the
-Version 3.0 temporal filter.
+See [VERSION_NOTES.md](VERSION_NOTES.md) for current stable-version details and
+[CHANGELOG.md](CHANGELOG.md) for the version summary. Historical complete
+versions remain available through Git tags.
 
 ## Outputs
 
@@ -105,7 +106,7 @@ Each run creates a numbered folder under the output directory. Typical outputs i
 - `run.log` and `run_config.json`: execution log and saved parameters
 - `appearance_debug/`: optional appearance masks, difference images, and fused candidate masks
 - `flow_reliability/`: optional forward-backward consistency diagnostic images
-- `temporal_debug/`: Version 3.0 temporal input, output, hit-count, and confidence images
+- `temporal_debug/`: temporal input, output, hit-count, and confidence images
 
 ## Notes
 

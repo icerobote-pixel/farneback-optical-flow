@@ -1,7 +1,10 @@
-# Version 3.1 Temporal Processing Notes
+# Current Stable Version Notes: 3.1
 
 Version 3.1 keeps the Version 3.0 temporal filter and adds the Version 2.1
 appearance morphology adjustments.
+
+Historical source trees and version-specific notes remain available through the
+Git tags `v2.0`, `v2.1`, `v3.0`, and `v3.1`.
 
 ## Processing order
 

@@ -1,5 +1,9 @@
 # Changelog
 
+The `main` branch contains only the current stable source and
+`VERSION_NOTES.md`. Complete historical source trees remain available through
+the corresponding Git tags.
+
 ## Version 3.1
 
 - Kept the Version 3.0 recent-frame temporal filter.
