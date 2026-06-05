@@ -74,6 +74,18 @@ Set `ENABLE_APPEARANCE_CHANGE=True` to enable it. Available fusion modes are
 `flow_only`, `appearance_only`, `flow_and_appearance`, and
 `flow_or_appearance`.
 
+Version 3.0 adds a separate temporal experiment without replacing the Version
+2.0 main program:
+
+```bash
+python main_flow_detect_temporal.py input_video/cam2.mp4
+```
+
+The temporal entry point calls `tools/temporal_filter.py` after
+flow/appearance fusion and before final postprocessing. See
+`VERSION_3.0_NOTES.md` for the original Version 3.0 settings and processing
+order.
+
 ## Outputs
 
 Each run creates a numbered folder under the output directory. Typical outputs include:

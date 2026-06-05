@@ -1,5 +1,17 @@
 # Changelog
 
+## Version 3.0
+
+Version 3.0 starts the temporal-processing development line while preserving
+the Version 2.0 detector.
+
+- Added the separate `main_flow_detect_temporal.py` entry point.
+- Added the standalone `tools/temporal_filter.py` tool.
+- Added recent-frame mask voting using a five-frame history and three required
+  hits.
+- Added motion-tolerance dilation, warmup behavior, temporal statistics, and
+  temporal debug images.
+
 ## Version 2.0
 
 Version 2.0 adds appearance-change detection and mask fusion while retaining the
