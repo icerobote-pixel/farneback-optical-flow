@@ -177,5 +177,24 @@ Current implementation note: the code currently writes two Excel sheets, `summar
 | `ENABLE_EDGE_CHANGE` | Detects changes in Canny edge maps. |
 | `ENABLE_TEXTURE_CHANGE` | Detects changes in Laplacian texture responses. |
 | `ENABLE_APPEARANCE_MORPH` | Cleans the combined appearance mask with morphology. |
+| `ENABLE_APPEARANCE_AREA_FILTER` | Removes appearance regions outside the configured area range before fusion. |
+| `APPEARANCE_MIN_REGION_AREA` | Minimum appearance-region area retained before fusion. |
+| `APPEARANCE_MAX_REGION_AREA` | Maximum appearance-region area retained before fusion. |
 | `SAVE_APPEARANCE_DEBUG_IMAGES` | Saves appearance masks and difference images. |
 | `APPEARANCE_SAVE_ONLY_DEBUG_FRAMES` | Saves appearance images only at the configured debug interval. |
+
+## Version 3.0 Temporal Configuration: `TEMPORAL_CFG`
+
+These settings are used by the separate `main_flow_detect_temporal.py` program.
+
+| Name | Meaning |
+| --- | --- |
+| `ENABLE_TEMPORAL_FILTER` | Enables the standalone Version 3.0 temporal filter. |
+| `HISTORY_LENGTH` | Maximum number of recent candidate masks retained. |
+| `MIN_HIT_FRAMES` | Number of recent masks that must support a candidate pixel. |
+| `MIN_HISTORY_FRAMES` | Number of frames collected before full temporal filtering begins. |
+| `MOTION_TOLERANCE_DILATE_ITER` | Dilates historical masks to tolerate small movement and mask jitter. |
+| `KEEP_CURRENT_ONLY` | Prevents old detections from creating trails when the current mask no longer contains the pixel. |
+| `WARMUP_MODE` | Behavior before enough history exists: `passthrough`, `suppress`, or `adaptive_vote`. |
+| `SAVE_TEMPORAL_DEBUG_IMAGES` | Saves temporal input, output, hit-count, and confidence images. |
+| `TEMPORAL_SAVE_ONLY_DEBUG_FRAMES` | Saves temporal images only at the configured debug interval. |

@@ -1,5 +1,40 @@
 # Changelog
 
+## Version 3.1
+
+- Kept the Version 3.0 recent-frame temporal filter.
+- Integrated the Version 2.1 separately postprocessed appearance and flow masks.
+- Changed the temporal output prefix to `flow_outputs_temporal_v3_1`.
+
+## Version 3.0
+
+Version 3.0 starts the temporal-processing development line without replacing
+the Version 2.0 main program.
+
+Changes included:
+
+- Added the separate `main_flow_detect_temporal.py` entry point.
+- Added the standalone `tools/temporal_filter.py` tool.
+- Added recent-frame mask voting with configurable history length and minimum
+  hit count.
+- Added optional dilation of historical masks to tolerate small target
+  movement or mask jitter.
+- Added configurable warmup behavior and an option to retain only pixels in
+  the current candidate mask.
+- Added `temporal_debug/` images for temporal input, output, hit count, and
+  confidence.
+- Added temporal pixel count, history length, and readiness to CSV statistics
+  and logs.
+- Added unit tests for repeated detections, single-frame noise, and positional
+  tolerance.
+
+## Version 2.1
+
+- Postprocesses optical-flow and appearance masks separately before fusion.
+- Starts appearance processing with color change only.
+- Tightens appearance thresholds and adds appearance-region area filtering.
+- Keeps final postprocessing after fusion.
+
 ## Version 2.0
 
 Version 2.0 adds appearance-change detection and mask fusion while retaining the

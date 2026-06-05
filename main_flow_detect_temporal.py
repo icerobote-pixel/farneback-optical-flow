@@ -30,6 +30,7 @@ from tools.appearance_change import (
     fuse_flow_and_appearance_masks,
     save_appearance_debug_images,
 )
+from tools.temporal_filter import TemporalMaskFilter, save_temporal_debug_images
 from tools.save_manager import (
     create_run_paths,
     open_requested_writers,
@@ -45,7 +46,7 @@ INPUT_PATH = r"./input_video/cam2.mp4"  # TODO: 改成你的视频路径
 OUTPUT_BASE_ROOT = Path("./flow_outputs_net_remove4")
 # INPUT_PATH = r"./input_video/01-night-traffic-aerial-6749375.mp4"  # TODO: 改成你的视频路径
 # OUTPUT_BASE_ROOT = Path("./flow_outputs_net_remove_test")
-OUTPUT_RUN_PREFIX = "flow_outputs_appearance_v2_1"
+OUTPUT_RUN_PREFIX = "flow_outputs_temporal_v3_1"
 
 # ========= 光流参数 =========
 F_PARAMS = dict(
@@ -200,6 +201,20 @@ APPEARANCE_CFG: Dict = dict(
 
     SAVE_APPEARANCE_DEBUG_IMAGES=True,
     APPEARANCE_SAVE_ONLY_DEBUG_FRAMES=True,
+)
+
+
+# ========= Version 3.0 时序掩膜过滤参数 =========
+TEMPORAL_CFG: Dict = dict(
+    ENABLE_TEMPORAL_FILTER=True,
+    HISTORY_LENGTH=5,
+    MIN_HIT_FRAMES=3,
+    MIN_HISTORY_FRAMES=3,
+    MOTION_TOLERANCE_DILATE_ITER=1,
+    KEEP_CURRENT_ONLY=True,
+    WARMUP_MODE="passthrough",
+    SAVE_TEMPORAL_DEBUG_IMAGES=True,
+    TEMPORAL_SAVE_ONLY_DEBUG_FRAMES=True,
 )
 
 
@@ -448,6 +463,9 @@ def main():
     if APPEARANCE_CFG["ENABLE_APPEARANCE_CHANGE"] and APPEARANCE_CFG["SAVE_APPEARANCE_DEBUG_IMAGES"]:
         paths["appearance_debug_dir"] = paths["run_dir"] / "appearance_debug"
         paths["appearance_debug_dir"].mkdir(parents=True, exist_ok=True)
+    if TEMPORAL_CFG["ENABLE_TEMPORAL_FILTER"] and TEMPORAL_CFG["SAVE_TEMPORAL_DEBUG_IMAGES"]:
+        paths["temporal_debug_dir"] = paths["run_dir"] / "temporal_debug"
+        paths["temporal_debug_dir"].mkdir(parents=True, exist_ok=True)
     logger = setup_run_logger(paths, LOG_CFG) if LOG_CFG["ENABLE_LOGGING"] else None
 
     if logger is not None:
@@ -487,6 +505,7 @@ def main():
             "vis_cfg": VIS_CFG,
             "reliability_cfg": RELIABILITY_CFG,
             "appearance_cfg": APPEARANCE_CFG,
+            "temporal_cfg": TEMPORAL_CFG,
             "log_cfg": LOG_CFG,
             "video_width": int(w),
             "video_height": int(h),
@@ -508,6 +527,7 @@ def main():
             logger.info("视频输出 %s: %s", key, p)
 
     all_mags = []
+    temporal_filter = TemporalMaskFilter(TEMPORAL_CFG) if TEMPORAL_CFG["ENABLE_TEMPORAL_FILTER"] else None
     need_debug_pack = VIS_CFG["ENABLE_DEBUG_OUTPUTS"] or (VIS_CFG["ENABLE_COMPARE_OUTPUTS"] and VIS_CFG["SAVE_COMPARE_EXCEL"])
 
     csv_file = None
@@ -533,6 +553,9 @@ def main():
             "reliable_pixel_ratio",
             "appearance_pixels",
             "fused_target_pixels",
+            "temporal_target_pixels",
+            "temporal_history_frames",
+            "temporal_ready",
         ])
 
     try:
@@ -648,6 +671,22 @@ def main():
                         logger=logger,
                     )
 
+            temporal_target_pixels = int(mask_used.sum())
+            temporal_history_frames = 0
+            temporal_ready = False
+            if temporal_filter is not None:
+                temporal_pack = temporal_filter.update(mask_used)
+                mask_used = temporal_pack["temporal_mask"]
+                temporal_target_pixels = int(temporal_pack["temporal_pixels"])
+                temporal_history_frames = int(temporal_pack["frames_in_history"])
+                temporal_ready = bool(temporal_pack["temporal_ready"])
+
+                should_save_temporal = TEMPORAL_CFG["SAVE_TEMPORAL_DEBUG_IMAGES"] and (
+                    debug_needed if TEMPORAL_CFG["TEMPORAL_SAVE_ONLY_DEBUG_FRAMES"] else True
+                )
+                if should_save_temporal:
+                    save_temporal_debug_images(paths["temporal_debug_dir"], frame_idx, temporal_pack)
+
             post_pack = postprocess_target_mask(mask_used, POST_CFG)
             flow_hsv_bgr = flow_to_hsv(flow_used)
             quiver_img = draw_quiver(frame, flow_used, step=VIS_CFG["QUIVER_STEP"], scale=VIS_CFG["QUIVER_SCALE"])
@@ -702,6 +741,9 @@ def main():
                     f"{reliable_pixel_ratio:.6f}",
                     int(appearance_pixels),
                     int(fused_target_pixels),
+                    int(temporal_target_pixels),
+                    int(temporal_history_frames),
+                    int(temporal_ready),
                 ])
 
             if VIS_CFG["ENABLE_DEBUG_OUTPUTS"] and debug_needed and debug_pack is not None and info.get("ok", False):
@@ -718,7 +760,7 @@ def main():
 
             if logger is not None and (frame_idx % max(1, LOG_CFG["LOG_EVERY_N_FRAMES"]) == 0):
                 logger.info(
-                    "frame=%d mean_speed=%.3f mean_angle=%.2f dom_dir=%.2f r_theta=%.2f mag0=%.3f mag0_source=%s r_mag=%.3f target_pixels=%d appearance_pixels=%d fused_pixels=%d post_pixels=%d kept_regions=%d mean_fb_error=%.3f reliable_ratio=%.3f",
+                    "frame=%d mean_speed=%.3f mean_angle=%.2f dom_dir=%.2f r_theta=%.2f mag0=%.3f mag0_source=%s r_mag=%.3f target_pixels=%d appearance_pixels=%d fused_pixels=%d temporal_pixels=%d temporal_history=%d temporal_ready=%s post_pixels=%d kept_regions=%d mean_fb_error=%.3f reliable_ratio=%.3f",
                     frame_idx,
                     speed,
                     angle,
@@ -730,6 +772,9 @@ def main():
                     int(info.get("target_pixels", 0)),
                     int(appearance_pixels),
                     int(fused_target_pixels),
+                    int(temporal_target_pixels),
+                    int(temporal_history_frames),
+                    temporal_ready,
                     int(post_pack["post_target_pixels"]),
                     int(post_pack["num_kept_contours"]),
                     mean_fb_error,

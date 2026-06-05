@@ -8,6 +8,7 @@ This project detects moving target regions in video using OpenCV Farneback optic
 - Optional forward-backward optical-flow reliability diagnosis
 - Optional color, edge, and texture appearance-change detection
 - Configurable fusion of optical-flow and appearance-change masks
+- Optional Version 3.0 recent-frame temporal mask filtering
 - Morphology and area filtering for cleaner target regions
 - HSV flow visualization, quiver arrows, region overlays, and bounding boxes
 - Per-run output folders with logs, configuration snapshots, CSV stats, and debug images
@@ -18,10 +19,12 @@ This project detects moving target regions in video using OpenCV Farneback optic
 ```text
 .
 ├── main_flow_detect.py
+├── main_flow_detect_temporal.py
 ├── tools/
 │   ├── flow_visual_debug.py
 │   ├── flow_reliability.py
 │   ├── appearance_change.py
+│   ├── temporal_filter.py
 │   └── save_manager.py
 ├── input_video/
 │   └── .gitkeep
@@ -74,6 +77,22 @@ Set `ENABLE_APPEARANCE_CHANGE=True` to enable it. Available fusion modes are
 `flow_only`, `appearance_only`, `flow_and_appearance`, and
 `flow_or_appearance`.
 
+Version 3.0 keeps the Version 2.0 main program unchanged and provides a
+separate temporal entry point:
+
+```bash
+python main_flow_detect_temporal.py input_video/cam2.mp4
+```
+
+The temporal program calls `tools/temporal_filter.py` after flow/appearance
+fusion and before morphology and area filtering. Its default rule keeps pixels
+that appear in at least `3` of the recent `5` frames. A small dilation of
+historical masks allows minor movement between frames.
+
+Version 2.1 adjusts appearance fusion by postprocessing flow and appearance
+masks separately before fusion. Version 3.1 combines this adjustment with the
+Version 3.0 temporal filter.
+
 ## Outputs
 
 Each run creates a numbered folder under the output directory. Typical outputs include:
@@ -86,6 +105,7 @@ Each run creates a numbered folder under the output directory. Typical outputs i
 - `run.log` and `run_config.json`: execution log and saved parameters
 - `appearance_debug/`: optional appearance masks, difference images, and fused candidate masks
 - `flow_reliability/`: optional forward-backward consistency diagnostic images
+- `temporal_debug/`: Version 3.0 temporal input, output, hit-count, and confidence images
 
 ## Notes
 

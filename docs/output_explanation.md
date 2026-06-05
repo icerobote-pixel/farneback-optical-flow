@@ -219,3 +219,18 @@ The frame statistics CSV and `run.log` also include `appearance_pixels` and
 This folder contains optional forward-backward optical-flow consistency
 diagnostics. The statistics CSV and log include `mean_fb_error` and
 `reliable_pixel_ratio`.
+
+## `temporal_debug/`
+
+This Version 3.0 folder is created by `main_flow_detect_temporal.py` when
+temporal debug output is enabled.
+
+| File Pattern | Meaning |
+| --- | --- |
+| `temporal_input_mask_frame_XXXXX.png` | Candidate mask before temporal filtering. |
+| `temporal_output_mask_frame_XXXXX.png` | Candidate mask retained by recent-frame voting. |
+| `temporal_hit_count_frame_XXXXX.png` | Grayscale visualization of recent-frame hit counts. |
+| `temporal_confidence_frame_XXXXX.png` | Heatmap of the fraction of recent masks supporting each pixel. |
+
+The statistics CSV and `run.log` also include `temporal_target_pixels`,
+`temporal_history_frames`, and `temporal_ready`.

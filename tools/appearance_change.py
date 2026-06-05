@@ -13,23 +13,26 @@ DEFAULT_APPEARANCE_CFG: Dict = dict(
 
     ENABLE_COLOR_CHANGE=True,
     COLOR_BLUR_SIZE=(5, 5),
-    COLOR_DIFF_THRESHOLD=22.0,
+    COLOR_DIFF_THRESHOLD=35.0,
     COLOR_USE_HS_ONLY=True,
 
-    ENABLE_EDGE_CHANGE=True,
+    ENABLE_EDGE_CHANGE=False,
     EDGE_CANNY_LOW=40,
     EDGE_CANNY_HIGH=120,
-    EDGE_DILATE_ITER=1,
-    EDGE_DIFF_DILATE_ITER=1,
+    EDGE_DILATE_ITER=0,
+    EDGE_DIFF_DILATE_ITER=0,
 
-    ENABLE_TEXTURE_CHANGE=True,
+    ENABLE_TEXTURE_CHANGE=False,
     TEXTURE_BLUR_SIZE=(3, 3),
-    TEXTURE_DIFF_THRESHOLD=18.0,
+    TEXTURE_DIFF_THRESHOLD=30.0,
 
     ENABLE_APPEARANCE_MORPH=True,
     APPEARANCE_KERNEL_SIZE=(3, 3),
-    APPEARANCE_OPEN_ITER=0,
+    APPEARANCE_OPEN_ITER=1,
     APPEARANCE_CLOSE_ITER=1,
+    ENABLE_APPEARANCE_AREA_FILTER=True,
+    APPEARANCE_MIN_REGION_AREA=300,
+    APPEARANCE_MAX_REGION_AREA=50000,
 
     SAVE_APPEARANCE_DEBUG_IMAGES=True,
     APPEARANCE_SAVE_ONLY_DEBUG_FRAMES=True,
@@ -97,15 +100,23 @@ def compute_texture_change_mask(prev_gray, curr_gray, cfg: Dict):
 
 
 def postprocess_appearance_mask(mask_bool, cfg: Dict):
-    if not cfg["ENABLE_APPEARANCE_MORPH"]:
-        return mask_bool.astype(bool)
-
     mask_u8 = bool_to_u8(mask_bool)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, cfg["APPEARANCE_KERNEL_SIZE"])
-    if cfg["APPEARANCE_OPEN_ITER"] > 0:
-        mask_u8 = cv2.morphologyEx(mask_u8, cv2.MORPH_OPEN, kernel, iterations=int(cfg["APPEARANCE_OPEN_ITER"]))
-    if cfg["APPEARANCE_CLOSE_ITER"] > 0:
-        mask_u8 = cv2.morphologyEx(mask_u8, cv2.MORPH_CLOSE, kernel, iterations=int(cfg["APPEARANCE_CLOSE_ITER"]))
+    if cfg["ENABLE_APPEARANCE_MORPH"]:
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, cfg["APPEARANCE_KERNEL_SIZE"])
+        if cfg["APPEARANCE_OPEN_ITER"] > 0:
+            mask_u8 = cv2.morphologyEx(mask_u8, cv2.MORPH_OPEN, kernel, iterations=int(cfg["APPEARANCE_OPEN_ITER"]))
+        if cfg["APPEARANCE_CLOSE_ITER"] > 0:
+            mask_u8 = cv2.morphologyEx(mask_u8, cv2.MORPH_CLOSE, kernel, iterations=int(cfg["APPEARANCE_CLOSE_ITER"]))
+
+    if cfg["ENABLE_APPEARANCE_AREA_FILTER"]:
+        contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        filtered_u8 = np.zeros_like(mask_u8)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if cfg["APPEARANCE_MIN_REGION_AREA"] <= area <= cfg["APPEARANCE_MAX_REGION_AREA"]:
+                cv2.drawContours(filtered_u8, [contour], -1, 255, thickness=-1)
+        mask_u8 = filtered_u8
+
     return mask_u8 > 0
 
 
