@@ -23,3 +23,14 @@ raw appearance cues   -> separate appearance postprocessing
 
 Version 3.1 writes to the separate output prefix
 `flow_outputs_temporal_v3_1`.
+
+The current tuned temporal setting uses:
+
+```python
+HISTORY_LENGTH=5
+MIN_HIT_FRAMES=2
+MIN_HISTORY_FRAMES=3
+```
+
+This is less strict than the initial Version 3.1 experiment, which required
+three hits and removed too many short-lived detections.
